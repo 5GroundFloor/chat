@@ -1494,16 +1494,21 @@ const addMessage = (message) => {
                 };
                 if (type === 'system') messageData.sender = null;
 
+                // 如果是 choice 类型，标记待回复
+                if (type === 'choice' && extraData.choiceOptions) {
+                    window._pendingChoiceReply = extraData.choiceOptions;
+                }
+
                 addMessage(messageData);
                 if (type !== 'system') playSound('send');
                 currentReplyTo = null;
                 updateReplyPreview();
 
-if (!isBatchMode && (type === 'normal' || type === 'choice')) {
-    // 触发延迟回复（真实用户消息 → isUserMessage = true）
-    window._triggerDelayedReply(true);
-}
-};
+                if (!isBatchMode && (type === 'normal' || type === 'choice')) {
+                    // 触发延迟回复（真实用户消息 → isUserMessage = true）
+                    window._triggerDelayedReply(true);
+                }
+            };
 
             if (imageFile) {
                 showNotification('正在优化图片...', 'info', 1500);
@@ -1766,20 +1771,19 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
             const recentUserMsgs = (settings.replyEnabled && !window._companionSilentTrigger)
                 ? messages.filter(m => m.sender === 'user' && m.text).slice(-10)
                 : [];
-            // 检查最近的用户消息是否是 choice 类型
-            const lastUserMsg = messages.filter(m => m.sender === 'user' && m.type === 'choice').slice(-1)[0];
-            const isChoiceReply = !!(lastUserMsg && lastUserMsg.choiceOptions && lastUserMsg.choiceOptions.length > 0);
+            // 检查是否有待回复的 choice 选项（只在刚发送 choice 消息后有效，一次性）
+            const pendingChoiceOptions = window._pendingChoiceReply;
             for (let i = 0; i < replyCount; i++) {
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                 delay += settings.replyDelayMin + Math.random() * delayRange;
                 setTimeout(() => {
                     try {
                     let replyText = '';
-                    // 如果是 choice 类型消息，从选项中随机选择
-                    if (isChoiceReply && i === 0) {
-                        const choiceOptions = lastUserMsg.choiceOptions;
-                        const pickedOption = choiceOptions[Math.floor(Math.random() * choiceOptions.length)];
+                    // 如果有待回复的 choice 选项，从选项中随机选择（仅第一次回复）
+                    if (pendingChoiceOptions && i === 0) {
+                        const pickedOption = pendingChoiceOptions[Math.floor(Math.random() * pendingChoiceOptions.length)];
                         replyText = '我选：' + pickedOption;
+                        window._pendingChoiceReply = null; // 清除标志
                     } else {
                         const replyPool = replyPoolOnce;
                         // 被屏蔽或无效项直接换下一个，尽量保证每次都产出可用回复
